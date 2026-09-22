@@ -65,8 +65,14 @@ export default function Home() {
           각 공식 문서의 설치 절차 그대로 조합한 스타터 킷입니다.
         </p>
         <div className="flex flex-wrap gap-3">
-          <Link href="/icons" className={cn(buttonVariants({ size: "lg" }))}>
-            아이콘 데모 보기
+          <Link href="/examples" className={cn(buttonVariants({ size: "lg" }))}>
+            예제 화면 보기
+          </Link>
+          <Link
+            href="/icons"
+            className={cn(buttonVariants({ variant: "outline", size: "lg" }))}
+          >
+            아이콘 데모
           </Link>
           <a
             href="https://ui.shadcn.com/docs/components"

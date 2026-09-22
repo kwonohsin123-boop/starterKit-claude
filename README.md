@@ -144,6 +144,7 @@ npm run dev     # http://localhost:3000
 | `npm run start` | 프로덕션 서버 |
 | `npm run lint` | ESLint |
 | `npm run lint:fix` | ESLint 자동 수정 |
+| `npm run gen:sample-image` | `/examples/assets`의 `next/image` 검증용 래스터 이미지 재생성 |
 
 ---
 
@@ -154,7 +155,10 @@ npx shadcn@latest add <컴포넌트명>
 npx shadcn@latest add select --dry-run   # 변경 사항 미리보기
 ```
 
-이미 포함된 13개: `avatar` `badge` `button` `card` `dialog` `dropdown-menu` `input` `label` `separator` `skeleton` `sonner` `tabs` `tooltip`
+이미 포함된 23개:
+`accordion` `alert` `avatar` `badge` `breadcrumb` `button` `card` `checkbox` `dialog` `dropdown-menu` `input` `label` `popover` `radio-group` `select` `separator` `skeleton` `sonner` `switch` `table` `tabs` `textarea` `tooltip`
+
+> `field`는 추가하지 않았습니다. `registryDependencies`가 `label`·`separator`라서 기존 두 파일을 덮어쓰기 때문입니다. 폼 에러는 `Label` + 인라인 `text-destructive` 문구로 처리합니다.
 
 컴포넌트는 `src/components/ui/`에 **소스 코드로** 복사되므로 자유롭게 수정할 수 있습니다.
 
@@ -182,19 +186,28 @@ npx shadcn@latest add select --dry-run   # 변경 사항 미리보기
 ├─ postcss.config.mjs           @tailwindcss/postcss
 ├─ tsconfig.json                paths: { "@/*": ["./src/*"] }
 ├─ AGENTS.md / CLAUDE.md        코딩 에이전트 가이드 (create-next-app 생성)
+├─ scripts/
+│  └─ generate-sample-image.mjs  next/image 검증용 래스터 생성 (npm run gen:sample-image)
+├─ public/examples/sample.jpg   위 스크립트 산출물
 └─ src/
    ├─ app/
    │  ├─ globals.css            Tailwind v4 + shadcn 토큰 (설정 파일 없음)
    │  ├─ layout.tsx             ThemeProvider · TooltipProvider · 헤더/푸터 셸
    │  ├─ page.tsx               랜딩 + 컴포넌트 데모
-   │  └─ icons/page.tsx         lucide-react 아이콘 데모
+   │  ├─ icons/page.tsx         lucide-react 아이콘 데모
+   │  ├─ api/                   Route Handler 4개 (posts · posts/[slug] · time · cached-time)
+   │  └─ examples/              기술 스택 검증 화면 (§9)
    ├─ components/
-   │  ├─ ui/                    shadcn 컴포넌트 13개
+   │  ├─ ui/                    shadcn 컴포넌트 23개
    │  ├─ layout/                site-header · site-footer
    │  ├─ demo/                  component-showcase
+   │  ├─ demo/examples/         검증 화면의 클라이언트 조각
+   │  ├─ examples/              검증 화면의 서버 조각 (헤더 · 섹션 · Code)
    │  ├─ theme-provider.tsx
    │  └─ mode-toggle.tsx
-   └─ lib/utils.ts              export { cn } from "cn"
+   └─ lib/
+      ├─ utils.ts               export { cn } from "cn"
+      └─ examples/              목업 데이터와 토큰 메타데이터
 ```
 
 ---
@@ -264,3 +277,60 @@ npx shadcn@latest add button card input label badge separator skeleton \
 - [shadcn/ui — Dark Mode (Next.js)](https://ui.shadcn.com/docs/dark-mode/next)
 - [Base UI](https://base-ui.com)
 - [Lucide Icons](https://lucide.dev/icons/)
+
+---
+
+## 9. 기술 스택 검증 화면 (`/examples`)
+
+이 스타터 킷의 조합은 **깨져도 화면이 그럴싸하게 보이는** 지점이 많습니다.
+`/examples` 아래 화면들은 그 실패를 눈으로 잡아내기 위한 것으로, 값을 직접 측정해 보여줍니다.
+
+| 경로 | 무엇을 검증하는가 |
+|---|---|
+| `/examples` | 인덱스. 하위 화면 카드와 검증 명령 |
+| `/examples/theme` | 색 토큰 31개 팔레트, 라이트/다크 computed 값 동시 비교, radius 스케일, 숨은 커스텀 유틸리티, `data-*` 변형 |
+| `/examples/components` | Button variant 6 × size 8 전수, Base UI `render` prop 4가지 형태, `data-*` 실시간 관찰, 키보드 체크리스트 |
+| `/examples/assets` | `font-sans`·`font-mono`·`font-heading`의 실제 적용 family, lucide 크기·색 상속, `next/image`의 `srcset`·`currentSrc` 실측 |
+| `/examples/server-actions` | `form action` 연결, `useActionState`, 서버 유효성 검사, `revalidatePath` |
+| `/examples/route-handlers` | `/api` 호출 플레이그라운드, Next 16의 캐시 기본값 ↔ `force-static` 대조 |
+| `/examples/streaming` | 셸 먼저 전송 후 `<Suspense>` 점진 스트리밍, `searchParams` Promise |
+| `/examples/error-handling` | `error.tsx`의 `{ error, retry }`, `retry()`로 실제 복구, `error.digest` |
+| `/examples/posts` · `/examples/posts/[slug]` | 동적 라우트, `generateStaticParams`, `generateMetadata`, `notFound()` |
+| `/examples/boundary` | 서버/클라이언트 실행 위치 대비, `children` 슬롯 주입, 하이드레이션 안전 패턴 |
+
+### 이 화면들이 실제로 잡아낸 것
+
+구현·검증 과정에서 다음이 드러났습니다. 모두 화면 안에 설명과 함께 남겨 두었습니다.
+
+- **`destructive-foreground` 토큰이 없습니다.** `text-destructive-foreground`는 클래스가 생성되지 않아 조용히 무시됩니다. shadcn 컴포넌트도 `text-white`를 씁니다.
+- **`chart-1`~`chart-5`가 라이트/다크에서 같은 값이고 전부 무채색입니다.** 데이터 시각화를 붙이기 전에 색을 직접 정의해야 합니다.
+- **`rounded-xs`만 `@theme`에서 오버라이드되지 않습니다.** Tailwind 기본값 0.125rem이 남아 `rounded-sm`(0.375rem)보다 작습니다.
+- **`quality` 값은 allowlist에 있어야 적용됩니다.** Next 16에서 `images.qualities` 기본값이 `[75]` 하나로 제한되어, 목록에 없는 값은 dev에서 콘솔 경고를 남기고 프로덕션에서는 조용히 75로 처리됩니다. `/examples/assets`의 quality 비교가 실제로 동작하도록 `next.config.ts`에 `[20, 50, 75, 90]`을 등록해 두었습니다.
+- **SVG는 `next/image` 최적화를 우회합니다.** 에러 없이 원본이 서빙되지만 `srcset`·blur·AVIF 협상이 전혀 생기지 않습니다.
+- **`priority`는 deprecated**이고 `preload`로 대체되었습니다.
+- **`revalidateTag`는 인자가 두 개**입니다(`revalidateTag(tag, "max")`). 하나만 넘기면 타입 에러가 납니다.
+- **`typeof window`를 JSX에 그대로 쓰면 하이드레이션 불일치(React #418)가 납니다.** `useSyncExternalStore`의 서버/클라이언트 스냅샷으로 나눠야 합니다.
+- **ESLint의 React Compiler 규칙이 활성입니다.** 컴포넌트 본문에서 `Date.now()`·`performance.now()` 호출, 렌더 중 ref 접근, 이펙트 안의 무조건 `setState`가 모두 error입니다.
+
+### Playwright로 콘솔·레이아웃을 쓸어서 잡은 것
+
+전 라우트를 375px·1280px에서 열고 콘솔과 페이지 오버플로를 측정해 아래를 찾아 고쳤습니다.
+
+- **`Alert` 안의 코드 블록이 페이지 전체에 가로 스크롤을 만들었습니다.** shadcn 원본 `alert.tsx`의 grid 트랙이 `auto_1fr`이고, grid의 `1fr`은 `minmax(auto, 1fr)`이라 트랙이 콘텐츠의 min-content 폭 아래로 줄어들지 못합니다. 코드 블록에 `overflow-x-auto`가 걸려 있어도 막히지 않습니다. `/examples/theme`에서 375px 폭에 **178px 오버플로**로 측정됐고, `minmax(0,1fr)`로 고쳤습니다. `shadcn add alert`로 재생성하면 되돌아갑니다.
+- **`next/image`의 `width`/`height`가 원본 종횡비와 어긋나면 경고가 납니다.** `next.svg`의 viewBox는 `0 0 394 80`(비율 4.925)인데 `240×48`(비율 5.0)로 선언해 뒀더니, Tailwind preflight의 `img { height: auto }`가 실제 비율로 48.73px을 계산해 렌더 높이만 49가 되었습니다. 한쪽 치수만 달라지면 Next.js가 종횡비 경고를 냅니다. 속성에는 원본 크기를 넣고 표시 크기는 CSS로 줄이는 것이 맞습니다.
+- **`type="password"` 입력에 Chrome이 힌트를 두 번 냈습니다.** `<form>` 밖에 있으면 "Password field is not contained in a form", form 안에 넣으면 이번엔 "Input elements should have autocomplete attributes". 둘 다 채워야 조용해집니다.
+- **`notFound()`는 dev에서 React 오류를 남기는데 우리 코드 문제가 아닙니다.** "Encountered a script tag while rendering React component"가 404마다 뜨지만, 커스텀 `not-found.tsx`를 완전히 치우고 Next 기본 404로 바꿔도 그대로 재현됩니다. Next.js가 렌더하는 `<script id="_R_">` 때문이고 **프로덕션 빌드에서는 나오지 않습니다.**
+
+검증이 끝난 상태에서 콘솔에 남아 있어야 하는 것은 **`/examples/components`의 404 한 건**뿐입니다. `AvatarImage`가 없는 경로를 가리켜 `Fallback`으로 전환되는 것을 보여주는 의도된 데모이고, 화면에도 그렇게 적어 두었습니다. 그 밖에 무언가 찍히면 회귀입니다.
+
+### 검증 순서
+
+```bash
+npm run build     # 새 라우트의 전역 타입 생성 + 프로덕션 빌드
+npm run lint      # next build는 린트를 돌리지 않습니다
+npx tsc --noEmit
+npm run start     # 캐시와 revalidate 동작은 프로덕션에서만 구분됩니다
+```
+
+`/examples/server-actions`의 "서버 렌더 시각"과 `/api/cached-time`의 고정 시각은
+`next dev`에서는 매 요청 재실행되어 구분되지 않으므로 **프로덕션 빌드에서 확인**해야 합니다.

@@ -91,9 +91,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 프리미티브를 Radix로 바꾸려면 `src/components/ui/` 전체를 재생성해야 합니다 (`README.md` §7.2).
 
+`field`는 일부러 추가하지 않았습니다. `registryDependencies`가 `label`·`separator`라서 기존 두 파일을 덮어씁니다. 추가 전에 항상 `--dry-run`으로 확인하세요.
+
+---
+
+## `/examples` — 기술 스택 검증 화면
+
+`src/app/examples/` 아래 9개 화면은 데모가 아니라 **검증 화면**입니다. 스택이 깨지면 화면에서 드러나도록, 값을 실제로 측정해 보여줍니다. 스택을 건드린 뒤에는 관련 화면을 열어 확인하세요. 전체 목록은 `README.md` §9.
+
+- 색 토큰을 고쳤다 → `/examples/theme` (라이트/다크 computed 값 비교 표)
+- 컴포넌트를 추가·수정했다 → `/examples/components`
+- 폰트 변수나 이미지 설정을 고쳤다 → `/examples/assets`
+- 서버 기능을 고쳤다 → `/examples/server-actions` · `/examples/route-handlers` · `/examples/streaming` · `/examples/error-handling` · `/examples/posts` · `/examples/boundary`
+
+새 검증 화면을 추가하려면 `src/lib/examples/examples-nav.ts`에 항목을 넣으세요. 인덱스가 그 배열만 렌더합니다. `typedRoutes`가 꺼져 있어 `href` 오타는 타입 에러가 아니라 **런타임 404**입니다.
+
+### 검증 화면이 잡아낸 함정
+
+- **`destructive-foreground` 토큰이 없습니다.** `text-destructive-foreground`는 클래스가 생성되지 않고 조용히 무시됩니다. `text-white`를 쓰세요.
+- **`chart-1`~`chart-5`는 라이트/다크 값이 동일하고 전부 무채색입니다.** 차트를 붙이기 전에 색을 정의해야 합니다.
+- **`rounded-xs`만 `@theme` 오버라이드가 없어** Tailwind 기본값(0.125rem)이 남아 `rounded-sm`보다 작습니다.
+- **`images.qualities`는 allowlist이고 기본값이 `[75]`뿐입니다.** 목록에 없는 값은 dev에서 콘솔 경고를 남기고 프로덕션에서는 조용히 75로 처리됩니다. 이 프로젝트는 `next.config.ts`에 `[20, 50, 75, 90]`을 등록해 뒀습니다.
+- **SVG는 `next/image` 최적화를 우회합니다.** 에러는 없지만 `srcset`·blur·AVIF가 생기지 않습니다. 최적화를 검증하려면 래스터가 필요합니다(`npm run gen:sample-image`).
+- **`priority`는 deprecated → `preload`**.
+- **`revalidateTag(tag, profile)`는 인자가 두 개**입니다. 하나만 넘기면 타입 에러입니다.
+- **`typeof window`를 JSX에 그대로 쓰면 하이드레이션 불일치(React #418)**가 납니다. `useSyncExternalStore`의 서버/클라이언트 스냅샷으로 나누세요.
+
+#### Playwright로 쓸어서 잡은 것 (콘솔·레이아웃)
+
+- **`Alert` 안에 코드 블록이나 긴 URL을 넣으면 페이지 전체에 가로 스크롤이 생깁니다.** shadcn 원본의 grid 트랙이 `auto_1fr`인데 grid의 `1fr`은 `minmax(auto, 1fr)`이라 min-content 아래로 줄어들지 못합니다. 안쪽에 `overflow-x-auto`를 걸어도 막히지 않습니다. `src/components/ui/alert.tsx`를 `minmax(0,1fr)`로 고쳐 뒀고, **`shadcn add alert`로 재생성하면 되돌아갑니다.**
+- **`next/image`의 `width`/`height`는 원본의 종횡비와 정확히 같아야 합니다.** Tailwind preflight의 `img { height: auto }`가 실제 비율로 높이를 다시 계산하므로, 비율이 어긋나면 한쪽 치수만 달라져 Next.js가 종횡비 경고를 냅니다. 화면 크기는 CSS로 줄이고 속성에는 원본 크기를 넣으세요. (`next.svg`는 `394×80`입니다.)
+- **`type="password"` 입력은 `<form>` 안에 두고 `autoComplete`을 주세요.** 둘 중 하나라도 빠지면 Chrome이 콘솔에 힌트를 남깁니다. 하나를 고치면 다른 하나가 드러납니다.
+- **`notFound()`는 dev에서 "Encountered a script tag while rendering React component" 오류를 남깁니다.** Next.js가 렌더하는 `<script id="_R_">` 때문이고 **우리 코드 문제가 아닙니다.** 커스텀 `not-found.tsx`를 치우고 Next 기본 404로도 재현되며, 프로덕션 빌드에서는 나오지 않습니다. 쫓지 마세요.
+- **`/examples/components`에는 콘솔 404가 한 건 남습니다.** `AvatarImage`의 로드 실패 → `Fallback` 전환을 보여주는 의도된 데모입니다. 이 한 건 말고 콘솔에 무언가 있으면 회귀입니다.
+
+### ESLint의 React Compiler 규칙이 활성입니다
+
+`eslint-config-next` 16이 아래를 **error**로 잡습니다. 데모 코드를 쓸 때 자주 걸립니다.
+
+| 규칙 | 걸리는 코드 | 회피 |
+|---|---|---|
+| `react-hooks/purity` | 컴포넌트 본문의 `Date.now()` · `performance.now()` | 모듈 스코프 함수로 빼내기 (`measuredSleep`, `runRequest`) |
+| `react-hooks/refs` | 렌더 중 `ref.current` 읽기·쓰기 | 렌더 카운터 같은 패턴을 쓰지 않기 |
+| `react-hooks/set-state-in-effect` | 이펙트 본문의 무조건 `setState` | `useSyncExternalStore`, 또는 DOM 측정처럼 조건부로만 |
+
 ---
 
 ## 참고
 
-- `README.md` — §2 공식 문서 준수 검증표 · §6 다크 모드 동작 원리 · §7 Next 15 다운그레이드 / Radix 전환
+- `README.md` — §2 공식 문서 준수 검증표 · §6 다크 모드 동작 원리 · §7 Next 15 다운그레이드 / Radix 전환 · §9 검증 화면
 - `node_modules/next/dist/docs/01-app/` — 이 버전의 Next.js 공식 문서

@@ -17,8 +17,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | `npm run lint:fix` | ESLint 자동 수정 |
 | `npx tsc --noEmit` | 타입 체크 — **전용 스크립트가 없으므로 직접 실행** |
 | `npx shadcn@latest add <name>` | UI 컴포넌트 추가 (`--dry-run`으로 미리보기) |
+| `npm run gen:sample-image` | `public/examples/sample.jpg` 재생성 (sharp, 오프라인) |
 
 - **테스트 프레임워크가 설치되어 있지 않습니다.** 테스트 러너·설정·테스트 파일 모두 없으므로, 없는 테스트 명령을 지어내지 말고 변경 검증은 `lint` + `tsc --noEmit` + `build`로 하세요.
+- **캐시·revalidate는 `next dev`에서 검증할 수 없습니다.** dev는 매 요청 재렌더하므로 `revalidatePath`의 효과, `dynamic = "force-static"`, 프리렌더된 페이지의 '서버 렌더 시각'이 모두 구분되지 않습니다. `npm run build && npm run start`로 확인하세요.
 - **`next build`는 린트를 실행하지 않습니다** (Next 16 변경). 린트는 반드시 따로 돌려야 합니다.
 - 갓 클론한 트리에는 `.next/types`가 없어 `tsc --noEmit`이 `LayoutProps` 같은 전역 타입을 찾지 못합니다. `npm run dev` 또는 `npm run build`를 **한 번 돌린 뒤** 타입 체크하세요.
 
@@ -36,7 +38,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Props 타입 | `DialogPrimitive.Popup.Props` | `React.ComponentProps<typeof X>` |
 | 열림 상태 | `data-open` / `data-closed` | `data-state="open"` |
 
-근거: `src/components/mode-toggle.tsx:19`, `src/components/ui/dialog.tsx:47,63`. 모든 프리미티브는 `data-slot` 속성을 갖습니다.
+근거: `render` prop은 `src/components/mode-toggle.tsx:20`과 `src/components/ui/dialog.tsx:63`, Props 타입은 `dialog.tsx:47`, `data-open`은 `src/components/ui/accordion.tsx`. 모든 프리미티브는 `data-slot` 속성을 갖습니다.
 
 ### `cn`은 `cn` 패키지에서 옵니다
 
@@ -79,9 +81,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Server / Client 경계
 
-`src/app/**`는 기본이 Server Component입니다. `"use client"`는 11개 파일에만 있습니다 — 인터랙티브 shadcn 프리미티브(`avatar` `dialog` `dropdown-menu` `label` `separator` `sonner` `tabs` `tooltip`)와 `theme-provider` · `mode-toggle` · `demo/component-showcase`.
+`src/app/**`는 기본이 Server Component입니다. `"use client"` 지시문은 29개 파일에 있고, 그중 14개는 CLI가 생성한 인터랙티브 프리미티브(`avatar` `checkbox` `dialog` `dropdown-menu` `label` `popover` `radio-group` `select` `separator` `sonner` `switch` `table` `tabs` `tooltip`)입니다.
+
+우리가 직접 쓴 15개는 **경계가 필요한 곳에만** 있습니다.
+
+| 위치 | 왜 클라이언트여야 하는가 |
+|---|---|
+| `components/theme-provider.tsx` · `mode-toggle.tsx` | next-themes는 localStorage와 `<html>` 클래스를 만집니다 |
+| `components/demo/examples/*` (8개) | `getComputedStyle`·`MutationObserver`로 실제 적용값을 측정합니다 |
+| `components/demo/component-showcase.tsx` | 홈의 인터랙션 데모 |
+| `app/examples/**/{error,boom-button,api-playground,guestbook-form}.tsx` | `error.tsx`는 반드시 클라이언트여야 하고, 나머지는 `onClick`·`useActionState`가 필요합니다 |
+
+페이지(`page.tsx`)는 **전부 서버 컴포넌트**입니다. 인터랙션이 필요한 조각만 파일 단위로 분리하는 것이 이 저장소의 관례입니다. `Button`·`Badge`에 `onClick`을 달려면 그 파일이 클라이언트여야 합니다.
+
+> `grep -rl '"use client"' src/`는 **29개보다 많이** 잡힙니다. 검증 화면 본문이 이 지시문을 문자열로 설명하기 때문입니다. 첫 줄로 확인하세요.
 
 프로바이더 중첩은 `src/app/layout.tsx`: `ThemeProvider` → `TooltipProvider` → `SiteHeader`/`main`/`SiteFooter`, `Toaster`는 `TooltipProvider`의 형제.
+
+### Server Action 파일은 상수도 타입도 export할 수 없습니다
+
+`'use server'` 파일은 **모든 export가 async 함수**여야 합니다. 그래서 폼 상태 타입과 초기값이 액션 파일이 아니라 데이터 계층에 있습니다.
+
+- `src/app/examples/server-actions/actions.ts` — `'use server'`, 액션 함수만
+- `src/lib/examples/guestbook.ts` — `GuestbookFormState`, `initialGuestbookState`, 저장소
+
+`useActionState(action, initial)`의 액션 시그니처는 `(prevState, formData)`이고 반환값은 `[state, formAction, isPending]` 세 개입니다.
 
 ---
 
@@ -103,6 +127,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 컴포넌트를 추가·수정했다 → `/examples/components`
 - 폰트 변수나 이미지 설정을 고쳤다 → `/examples/assets`
 - 서버 기능을 고쳤다 → `/examples/server-actions` · `/examples/route-handlers` · `/examples/streaming` · `/examples/error-handling` · `/examples/posts` · `/examples/boundary`
+
+`src/app/api/`의 Route Handler 4개도 이 검증 세트의 일부입니다. Next 16에서 Route Handler는 **기본적으로 캐시되지 않으며**, `/api/time`(설정 없음)과 `/api/cached-time`(`dynamic = "force-static"`)이 그 대조군입니다. `force-static` 라우트의 `GET`은 **인자를 받을 수 없습니다** — `request`를 쓰면 빌드가 실패합니다.
 
 새 검증 화면을 추가하려면 `src/lib/examples/examples-nav.ts`에 항목을 넣으세요. 인덱스가 그 배열만 렌더합니다. `typedRoutes`가 꺼져 있어 `href` 오타는 타입 에러가 아니라 **런타임 404**입니다.
 
